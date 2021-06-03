@@ -83,7 +83,108 @@ barplot(growth$growth,
         ylab = "Sales in Million $",
         col = "darkred")
 dev.off()
+growth_good <- filter(growth, growth > 0)
+q3$Q2Sales <- q2$x
+names(q3) <- c("Store","Q3Sales","Q2Sales")
+barplot(height = q3$Q2Sales,q3$Q3Sales,
+        names = q3$Store,
+        main="Q2vsQ3 Store Sales",
+        xlab="Store",
+        ylab="Sales in Million $",
+        col = c("blue","black"))
 
-#Store 45 has maximum growth, also most stores' growth declined in Q3
+#Only 10 stores had maximum growth for said period, whereas most stores' growth declined in Q3
+
+#Inspecting if some holiday weeks had a negative impact on sales
 
 
+#holiday_sales <- filter(stores, Holiday_Flag == 1)
+#head(holiday_sales)
+
+
+#str(holiday_sales)
+#holiday_sales$Year <- year(holiday_sales$Date)
+#by_date <- holiday_sales %>% group_by(Date)
+#hol_date <- by_date %>% summarise(sales = mean(Weekly_Sales))
+
+#non_hol_sales <- filter(stores, Holiday_Flag == 0)
+#head(non_hol_sales)
+#by_date_non <- non_hol_sales %>% group_by(Date)
+#non_sales <- by_date_non %>% summarise(sales = mean(Weekly_Sales))
+
+hol_dates <- as.Date(c("2010-02-12","2011-02-11","2012-02-10","2013-02-08",
+                 "2010-09-10","2011-09-11","2012-09-07","2013-09-06",
+                 "2010-11-26","2011-11-25","2012-11-23","2013-11-29",
+                 "2010-12-31","2011-12-30","2012-12-28","2013-12-27"))
+
+holidays <- stores[stores$Date %in% hol_dates, ]
+by_hol_date <- holidays %>% group_by(Date)
+by_hol_date <- by_hol_date %>% summarise(sales = mean(Weekly_Sales))
+
+no_hol_dates <- as.Date(c("2010-02-05","2011-02-04","2012-02-03","2013-02-01",
+                       "2010-09-03","2011-09-04","2012-08-31","2013-08-30",
+                       "2010-11-19","2011-11-18","2012-11-16","2013-11-22",
+                       "2010-12-24","2011-12-23","2012-12-21","2013-12-20"))
+
+no_holidays <- stores[stores$Date %in% no_hol_dates,]
+by_date <- no_holidays %>% group_by(Date)
+by_date <- by_date %>% summarise(sales = mean(Weekly_Sales))
+class(by_date$Date)
+plot(by_date$Date, by_date$sales, type = 'l')
+install.packages('xts')
+library(xts)
+?xts
+
+by_date$Date <- factor(by_date$Date)
+ggplot(by_date, aes(Date, sales, group = 1)) + geom_line()
+
+##hol_sales <- aggregate(holiday_sales$Weekly_Sales, list(Store = holiday_sales$Store), mean)
+
+#Linear Regression to test which variables in the dataset affect sales for store 1
+
+#Month and quarter to be converted to dummy variables
+# Month - 1 for even numbered month, 0 for odd
+# Quarter - 1 for even quarter, 0 for odd
+
+store1 <- filter(stores, Store == '1')
+Even_Month <- ifelse(store1$Month == 2 | store1$Month == 4 | store1$Month == 6 |
+                store1$Month == 8 | store1$Month == 10 | store1$Month == 12, 
+                1, 0)
+Odd_Month <- ifelse(store1$Month == 1 | store1$Month == 3 | store1$Month == 5 |
+                store1$Month == 7 | store1$Month == 9 | store1$Month == 11, 
+                    1, 0)
+store1$Quarter <- quarter(store1$Dat, with_year = FALSE)
+store1$Semester <- semester(store1$Date, with_year = FALSE)
+Even_Quarter <- ifelse(store1$Quarter == 2 | store1$Quarter == 4 | store1$Quarter == 6 |
+                             store1$Quarter == 8 | store1$Quarter == 10 | store1$Quarter == 12, 
+                     1, 0)
+Odd_Quarter <- ifelse(store1$Quarter == 1 | store1$Quarter == 3 | store1$Quarter == 5 |
+                            store1$Quarter == 7 | store1$Quarter == 9 | store1$Quarter == 11, 
+                    1, 0)
+store1$Even_Month <- Even_Month
+store1$Odd_Month <- Odd_Month
+store1$Even_Quarter <- Even_Quarter
+store1$Odd_Quarter <- Odd_Quarter
+store1 <- store1[-9,-10]
+summary(store1)
+
+str(store1)
+plot(store1)
+
+
+#Checking initial assumptions about holiday periods impacting sales
+
+
+fit <- lm(Weekly_Sales~Holiday_Flag+Temperature+Fuel_Price+CPI+Unemployment, 
+          data = store1)
+fit
+a <- coef(fit[1])
+a
+summary(fit)
+plot(fit)
+
+fit1 <- lm(Weekly_Sales ~ Temperature + CPI + Holiday_Flag, data = store1)
+fit1
+summary(fit1)
+plot(fit1)
+predict(fit1)
