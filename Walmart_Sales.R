@@ -1,6 +1,17 @@
+#Analysis Walmart Store Sales
+#Date Created: 30/5/2021
+#Author: Sukanto Mukherjee
+
 getwd()
 setwd('/users/sukanto/WD/Walmart_StoreSale_Analysis/Walmart_StoreSales_Analysis')
-my_packages <- c("ggplot2","lubridate","dplyr", "ggplot2","lubridate","raster","zoo","sp","usdm","lmtest")
+#install.packages("fpp2")
+#install.packages('knitr')
+#install.packages('rmarkdown')
+
+#Installing and loading packages
+my_packages <- c("ggplot2","lubridate","dplyr", "plyr","ggplot2",
+                 "lubridate","raster","zoo","sp",
+                 "usdm","lmtest","forecast")
 lapply(my_packages, require, character.only = TRUE)
 stores <- read.csv('Walmart_Store_sales.csv')
 head(stores)
@@ -9,16 +20,15 @@ colnames(stores)
 str(stores)
 
 #Data preprocessing and Exploratory data analysis
-#Checking for missing and duplicate data
 
-sum(is.na(stores))
-duplicated(stores)
+#sum(is.na(stores))
+#duplicated(stores)
 
 
 #Formatting date column
 
 
-stores$Date <- as.Date(stores$Date, format = "%m-%d-%Y")
+stores$Date <- as.Date(stores$Date, format = c("%m-%d-%Y"))
 str(stores)
 
 #Which store had maximum sales?
@@ -33,9 +43,10 @@ ggplot(each_store, aes(Store, Weekly_Sales)) +
 dev.off()
 
 #Which store had maximum standard deviation and finding coeff of mean to sd
-library(plyr)
+
 each_store_sd <- aggregate(Weekly_Sales~Store,stores, sd)
 each_store_sd <- rename(each_store_sd, c(Weekly_Sales = 'SD_Sales'))
+max(each_store_sd)
 each_store_mean <- aggregate(Weekly_Sales~Store, stores, mean)
 each_store_mean <- rename(each_store_mean, c(Weekly_Sales = 'Mean_Sales'))
 each_store_mean_sd <- cbind(each_store_mean, each_store_sd)
@@ -89,3 +100,70 @@ dev.off()
 
 
 # we had experienced maximum sales in Dec 2010 and post that it was in June 2012. 
+
+#Sales Forecast 
+#Approach 1: Linear Model
+
+fit <- lm(Weekly_Sales ~ Holiday_Flag + Temperature + Fuel_Price
+          + CPI + Unemployment, stores)
+summary(fit)
+#Dropping the insignificant vars ie Temperature and Fuel Price
+fit1 <- lm(Weekly_Sales ~ Holiday_Flag + CPI + Unemployment, stores)
+summary(fit1)
+
+#The p-values are too low to support any hypothesis with a linear model
+
+#Approach 2 : Time series model
+# visually identifying if data is fit for time series
+store1 <- aggregate(Weekly_Sales~Date,stores,sum)
+plot(store1, type = 'l')
+class(store1)
+str(store1)
+
+#preparing data for ARIMA model
+library(dplyr)
+store_month_year <- transform(stores,Year =as.numeric(format(Date,"%Y"))
+                                     ,Month =as.numeric(format(Date,"%m")))
+store_month_year_filtered <- store_month_year %>% dplyr:: select(Weekly_Sales,Year,Month)
+
+# rolling up sales at month level
+Walmart_Rolledup <- aggregate(Weekly_Sales~Year+Month,
+                             store_month_year_filtered,sum)
+# sorting in year and month order
+Walmart_sorted <- arrange(Walmart_Rolledup,Year,Month)
+# creating a Column with month and year of sale
+Walmart_TS <- transform(Walmart_sorted,
+                        Time_Of_Sale = as.Date(paste(Year,"-",Month,"-",1,sep=""),
+                                                             format="%Y-%m-%d"))[,c(4,3)]
+
+# Build up ARIMA model to forecast last 6 months i.e as in input utilize only till 
+# Building ARIMA model
+Walmart_ARIMA <- auto.arima(Walmart_TS[1:30,2])
+Walmart_ARIMA = arima(Walmart_TS[1:30,2],order=c(2,1,2))
+Forecasted_Sale <- forecast(Walmart_ARIMA,h=6)
+Forecasted_Sale
+jpeg('sales_forecast_6m.jpg')
+plot(Forecasted_Sale)
+dev.off()
+# 6 months forecast
+Forecasted_Sales <- as.data.frame(Forecasted_Sale)
+Forecasted_Sales_6m <- Forecasted_Sales[,1]
+View(Forecasted_Sales_6m)
+# 6 m actual
+Actual_Sales_6m <- Walmart_TS[31:36,]
+# concatenating 6 m forecast and actual
+Actual_vs_Forecast_last_6_m <- cbind(Forecasted_Sales_6m,Actual_Sales_6m)
+View(Actual_vs_Forecast_last_6_m)
+p1<-ggplot(Actual_vs_Forecast_last_6_m, aes(Time_Of_Sale, Forecasted_Sales_6m))+
+  geom_line()+ggtitle("Six-Month Sales Forecast")
+p1
+p2<-ggplot(Actual_vs_Forecast_last_6_m, aes(Time_Of_Sale, Weekly_Sales))+
+  geom_line()+ggtitle("Actual Sales")
+p2
+install.packages('patchwork')
+library(patchwork)
+p1+p2
+Actual_vs_Forecast_last_6_m_deviation <- transform(Actual_vs_Forecast_last_6_m, 
+                                                 Errors = abs(Forecasted_Sales_6m-Weekly_Sales)/Weekly_Sales)
+MAPE <- mean(Actual_vs_Forecast_last_6_m_deviation$Errors)
+MAPE
